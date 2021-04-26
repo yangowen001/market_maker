@@ -1,0 +1,31 @@
+{
+    "RABBITMQ": {
+        "host": "192.168.44.130",
+        "port": 5672,
+        "username": "guest",
+        "password": "guest"
+    },
+    "PROXY": "http://127.0.0.1:7890",
+    "ACCOUNTS": [
+        {
+            "platform": "bitmex",
+            "account": "skforregister@gmail.com",
+            "access_key": "YaZ6c81UNsKVCW2eh87a7OeL",
+            "secret_key": "4lursf1Lk5DBrl7M28hJTBsxMiVeBIhnNyciL_glYQDPCJdy"
+        }
+    ],
+    "PLATFORMS": {
+        "bitmex": {
+            "wss": "wss://testnet.bitmex.com",
+            "symbols": [
+                "BTC/USD",
+                "LTC/USD"
+            ],
+            "channels": [
+                "ticker", "kline", "orderbook", "trade"
+            ]
+        }
+    },
+    "strategy": "my_test_strategy",
+    "symbol": "ETH/BTC"
+}
