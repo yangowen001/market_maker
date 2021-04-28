@@ -68,7 +68,7 @@ class BitmexAPI:
         success, error = await self.request("GET", "/api/v1/user/margin")
         return success, error
 
-    async def create_order(self, action, symbol, price, quantity, order_type="Limit", text=""):
+    async def create_order(self, action, symbol, price, quantity, order_type="Limit", text="", *args, **kwargs):
         """ 创建委托单
         @param action 委托类型 Buy 买入,  Sell 卖出
         @param symbol 交易对(合约名称)
@@ -77,6 +77,8 @@ class BitmexAPI:
         @param order_type 订单类型 Market 市价单, Limit 限价单
         @param text 订单附带说明
         """
+        logger.info("action", action, "symbol", symbol, "price", price)
+        logger.info("client_order_id", kwargs['client_order_id'])
         body = {
             "side": action,
             "symbol": symbol,
@@ -295,7 +297,6 @@ class BitmexTrade(Websocket):
         @param quantity 委托数量
         @param order_type 委托类型 LIMIT / MARKET
         """
-        logger.info("price:", price)
         if action == ORDER_ACTION_BUY:
             action_tmp = "Buy"
         else:
@@ -318,7 +319,7 @@ class BitmexTrade(Websocket):
             return None, "order type error"
         quantity = abs(int(quantity))
         success, error = await self._rest_api.create_order(action_tmp, self._symbol, price, quantity, order_type_tmp,
-                                                           trade_type)
+                                                           trade_type, *args, **kwargs)
         if error:
             return None, error
         else:
@@ -369,6 +370,7 @@ class BitmexTrade(Websocket):
               | "Expired" -> `Rejected, `New_order_rejected
               | _ -> invalid_arg' execType ordStatus
         """
+        logger.info("order info:", order_info)
         order_no = order_info["orderID"]
         state = order_info.get("ordStatus")
         if state == "New":
@@ -394,12 +396,18 @@ class BitmexTrade(Websocket):
                 "account": self._account,
                 "strategy": self._strategy,
                 "symbol": self._symbol,
-                "order_no": order_no,
+                "order_id": order_no,
                 "action": action,
                 "price": order_info.get("price"),
+                #"avg_price": order_info["avgPx"],
                 "quantity": int(order_info["orderQty"]),
-                "remain": int(order_info["orderQty"]),
-                "trade_type": trade_type
+                #"remain": int(order_info["leavesQty"]),
+                #"ctime": order_info["timestamp"],
+                #"utime": order_info["updateTime"],
+
+                "client_order_id": order_info['clOrdID'],
+                "order_type": order_info['ordType'],
+                #"fee": self.fee,
             }
             order = Order(**info)
             self._orders[order_no] = order
@@ -410,7 +418,7 @@ class BitmexTrade(Websocket):
         if order_info.get("avgPx"):
             order.avg_price = order_info.get("avgPx")
         if order.status in [ORDER_STATUS_FILLED, ORDER_STATUS_CANCELED, ORDER_STATUS_FAILED]:
-            self._orders.pop(order.order_no)
+            self._orders.pop(order.order_id)
         if order_info.get("timestamp"):
             order.ctime = tools.utctime_str_to_mts(order_info.get("timestamp"))
         if order_info.get("transactTime"):
