@@ -5,9 +5,11 @@ import sys
 from aioquant import quant
 
 def initialize():
-    from strategy.strategy import MyStrategy
+    from strategy.strategy_test import MyStrategy
     MyStrategy()
 
 if __name__ == "__main__":
     config_file = sys.argv[1]
-    quant.start(config_file, initialize)
+    quant._initialize(config_file)
+    initialize()
+    quant.start(config_file)

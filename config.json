@@ -1,31 +1,34 @@
 {
     "RABBITMQ": {
-        "host": "192.168.44.130",
+        "host": "127.0.0.1",
         "port": 5672,
         "username": "guest",
         "password": "guest"
     },
-    "PROXY": "http://127.0.0.1:7890",
     "ACCOUNTS": [
         {
             "platform": "bitmex",
             "account": "skforregister@gmail.com",
-            "access_key": "YaZ6c81UNsKVCW2eh87a7OeL",
-            "secret_key": "4lursf1Lk5DBrl7M28hJTBsxMiVeBIhnNyciL_glYQDPCJdy"
+            "access_key": "mOTkQQjQeKOuENS0lhbJGarD",
+            "secret_key": "Djs6xptrHS4hRLZn5sBKdsNhKJv7v0cTt7D49XNRYkKCj81C"
         }
     ],
     "PLATFORMS": {
         "bitmex": {
             "wss": "wss://testnet.bitmex.com",
             "symbols": [
-                "BTC/USD",
-                "LTC/USD"
+                "XBTUSD"
             ],
             "channels": [
-                "ticker", "kline", "orderbook", "trade"
+                "orderbook", "order", "position"
             ]
         }
     },
     "strategy": "my_test_strategy",
-    "symbol": "ETH/BTC"
+    "platform": "bitmex",
+    "host": "https://testnet.bitmex.com",
+    "wss": "wss://testnet.bitmex.com",
+    "symbol": "XBTUSD",
+    "quantity": 50,
+    "delta": 0.005
 }

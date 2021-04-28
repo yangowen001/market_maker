@@ -16,6 +16,7 @@ from aioquant.const import MARKET_TYPE_KLINE
 from aioquant.utils.web import Websocket
 from aioquant.order import ORDER_ACTION_BUY, ORDER_ACTION_SELL
 from aioquant.event import EventOrderbook, EventTrade, EventKline
+from aioquant.market import Orderbook,Trade
 
 
 class Bitmex(Websocket):
@@ -32,6 +33,8 @@ class Bitmex(Websocket):
         self._c_to_s = {}  # {"channel": "symbol"}
         url = self._wss + "/realtime"
         super(Bitmex, self).__init__(url)
+        super(Bitmex, self).__init__(url, connected_callback=self.connected_callback, process_callback=self.process)
+        #asyncio.get_event_loop().create_task(self.connected_callback())
         #self.initialize()
 
     async def connected_callback(self):
@@ -57,7 +60,7 @@ class Bitmex(Websocket):
                 "args": channels
             }
             logger.debug("data:{}".format(str(data)))
-            await self.ws.send_json(data)
+            await self._ws.send_json(data)
             logger.info("subscribe orderbook/trade/kline success.", caller=self)
 
     async def process(self, msg):
@@ -76,9 +79,10 @@ class Bitmex(Websocket):
                     "symbol": symbol,
                     "asks": item.get("asks"),
                     "bids": item.get("bids"),
-                    "timestamp": tools.utctime_str_to_ts(item["timestamp"])
+                    "timestamp": tools.utctime_str_to_ms(item["timestamp"])
                 }
-                EventOrderbook(**orderbook).publish()
+                #logger.info("orderbook", orderbook)
+                EventOrderbook(Orderbook(**orderbook)).publish()
                 logger.info("symbol:", symbol, "orderbook:", orderbook, caller=self)
         elif table == "trade":  # 成交数据
             for item in msg["data"]:
@@ -89,9 +93,9 @@ class Bitmex(Websocket):
                     "action":  ORDER_ACTION_BUY if item["side"] else ORDER_ACTION_SELL,
                     "price": "%.1f" % item["price"],
                     "quantity": str(item["size"]),
-                    "timestamp": tools.utctime_str_to_ts(item["timestamp"])
+                    "timestamp": tools.utctime_str_to_ms(item["timestamp"])
                 }
-                EventTrade(**trade).publish()
+                EventTrade(Trade(**trade)).publish()
                 logger.info("symbol:", symbol, "trade:", trade, caller=self)
         elif table == "tradeBin1m":  # 1分钟K线数据
             for item in msg["data"]:
@@ -104,7 +108,7 @@ class Bitmex(Websocket):
                     "low": "%.1f" % item["low"],  # 最低价
                     "close": "%.1f" % item["close"],  # 收盘价
                     "volume": str(item["volume"]),  # 交易量
-                    "timestamp": tools.utctime_str_to_ts(item["timestamp"]),  # 时间戳
+                    "timestamp": tools.utctime_str_to_ms(item["timestamp"]),  # 时间戳
                     "kline_type": MARKET_TYPE_KLINE
                 }
                 EventKline(**kline).publish()
