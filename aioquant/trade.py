@@ -84,6 +84,7 @@ class Trade:
             SingleTask.run(self._on_error_callback, e)
             SingleTask.run(self._on_init_callback, False)
             return
+        logger.info("platform:", platform)
         self._t = T(**kwargs)
 
     @property
@@ -115,6 +116,7 @@ class Trade:
         """
         logger.info("price:", type(price), price)
         logger.info("quantity", type(quantity), quantity)
+        logger.info("client_order_id", args, kwargs)
         price = tools.float_to_str(price)
         quantity = tools.float_to_str(quantity)
         if not kwargs.get("client_order_id"):
