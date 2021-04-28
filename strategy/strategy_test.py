@@ -9,7 +9,7 @@ from aioquant.trade import Trade
 from aioquant.const import BITMEX
 from aioquant.order import Order
 from aioquant.market import Orderbook
-from aioquant.order import ORDER_ACTION_BUY, ORDER_STATUS_FAILED, ORDER_STATUS_CANCELED, ORDER_STATUS_FILLED, ORDER_TYPE_LIMIT
+from aioquant.order import ORDER_ACTION_BUY, ORDER_ACTION_SELL, ORDER_STATUS_FAILED, ORDER_STATUS_CANCELED, ORDER_STATUS_FILLED, ORDER_TYPE_LIMIT
 from aioquant.position import Position
 from aioquant.tasks import LoopRunTask
 from aioquant.utils import tools
@@ -28,7 +28,7 @@ class MyStrategy:
         self.wss = config.wss
         self.host = config.host
         self.ask_price = None
-        self.bid_pirce = None
+        self.bid_price = None
         self.timestamp = 0
 
         self._init_ok = False
@@ -89,7 +89,7 @@ class MyStrategy:
         logger.info("_orderbook_ok", self._orderbook_ok, caller=self)
         self.ask_price = orderbook.asks[0][0]
         self.bid_price = orderbook.bids[0][0]
-        logger.info("bid_price", self.bid_pirce)
+        logger.info("bid_price", self.bid_price)
         logger.info("ask_price", self.ask_price)
         self.timestamp = orderbook.timestamp
 
@@ -108,12 +108,12 @@ class MyStrategy:
 
     @async_method_locker("buy_open", wait=False, timeout=5)
     async def buy_open(self):
-        logger.info("buy_open")
+        logger.info("buy_open", self._buy_open_client_order_id, self._position.long_quantity)
         if self._buy_open_client_order_id:
             return
         if self._position.long_quantity != 0:
             return
-        price = self.bid_pirce
+        price = self.bid_price
         quantity = config.quantity
         self._buy_open_client_order_id = self.generate_client_order_id()
         logger.info("client_order_id", self._buy_open_client_order_id)
@@ -169,7 +169,7 @@ class MyStrategy:
         self._orders[order.client_order_id] = order
         if order.status == ORDER_STATUS_FAILED:
             logger.info("order filled:", order, caller=self)
-        await self.send_order_filled_message(order)
+        #await self.send_order_filled_message(order)
 
     async def on_event_position_update(self, position: Position):
         logger.info("position update:", position, caller=self)
@@ -193,14 +193,14 @@ class MyStrategy:
                 del self._orders[order.client_order_id]
             # 如果价格偏高，编辑价格
             error = None
-            if order.action == ORDER_STATUS_BUY:
-                if self.bid_pirce - order.price >= config.delta:
+            if order.action == "Buy":
+                if self.bid_price - order.price >= config.delta:
                     success, error = await self.trader.edit_order(
-                        order.order_id, self.bid_pirce, order.remain)
+                        order.order_id, self.bid_price, order.remain)
                     logger.info("edit order:",
                                 order.client_order_id,
                                 "price:",
-                                self.bid_pirce,
+                                self.bid_price,
                                 caller=self)
             else:
                 if order.price - self.ask_price >= config.delta:
