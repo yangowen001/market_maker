@@ -105,6 +105,7 @@ class Event:
         from aioquant import quant
         SingleTask.run(quant.event_center.publish, self)
 
+
     async def callback(self, channel, body, envelope, properties):
         self._exchange = envelope.exchange_name
         self._routing_key = envelope.routing_key
@@ -192,6 +193,41 @@ class EventTrade(Event):
         trade = Trade().load_smart(self.data)
         return trade
 
+class EventAsset(Event):
+    """ Asset event.
+
+    Attributes:
+        platform: Exchange platform name, e.g. bitmex.
+        account: Trading account name, e.g. test@gmail.com.
+        assets: Asset details.
+        timestamp: Publish time, millisecond.
+        update: If any update in this publish.
+
+    * NOTE:
+        Publisher: Asset server.
+        Subscriber: Any servers.
+    """
+
+    def __init__(self, platform=None, account=None, assets=None, timestamp=None, update=False):
+        """Initialize."""
+        name = "EVENT_ASSET"
+        exchange = "Asset"
+        routing_key = "{platform}.{account}".format(platform=platform, account=account)
+        queue = "{server_id}.{exchange}.{routing_key}".format(server_id=config.server_id,
+                                                              exchange=exchange,
+                                                              routing_key=routing_key)
+        data = {
+            "platform": platform,
+            "account": account,
+            "assets": assets,
+            "timestamp": timestamp,
+            "update": update
+        }
+        super(EventAsset, self).__init__(name, exchange, queue, routing_key, data=data)
+
+    def parse(self):
+        asset = Asset(**self.data)
+        return asset
 
 class EventCenter:
     """Event center.

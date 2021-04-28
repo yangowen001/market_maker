@@ -1,16 +1,16 @@
 # -*- coding:utf-8 -*-
 
 """
-Binance Trade module.
-https://github.com/binance-exchange/binance-official-api-docs/blob/master/rest-api.md
+Bitmex REST API & Trade 模块
+https://www.bitmex.com/app/wsAPI
+https://www.bitmex.com/api/explorer/swagger.json
 
-Author: Ridiculous
-Date:   2021/04/23
-Email:  jokeforce@gmail.com
+Author: HuangTao
+Date:   2018/08/09
 """
 
-import json
 import copy
+import json
 import hmac
 import hashlib
 from urllib.parse import urljoin
@@ -18,381 +18,137 @@ from urllib.parse import urljoin
 from aioquant.error import Error
 from aioquant.utils import tools
 from aioquant.utils import logger
-from aioquant.order import Order
-from aioquant.tasks import SingleTask, LoopRunTask
+from aioquant.position import Position
+from aioquant.const import BITMEX
+from aioquant.tasks import SingleTask
+from aioquant.utils.websocket import Websocket
+from aioquant.utils.web import AsyncHttpRequests
+from aioquant.asset import Asset, AssetSubscribe
 from aioquant.utils.decorator import async_method_locker
-from aioquant.utils.web import Websocket, AsyncHttpRequests
-from aioquant.order import ORDER_ACTION_SELL, ORDER_ACTION_BUY, ORDER_TYPE_LIMIT, ORDER_TYPE_MARKET
+from aioquant.order import Order
+from aioquant.order import ORDER_ACTION_BUY, ORDER_ACTION_SELL
+from aioquant.order import ORDER_TYPE_LIMIT, ORDER_TYPE_MARKET
 from aioquant.order import ORDER_STATUS_SUBMITTED, ORDER_STATUS_PARTIAL_FILLED, ORDER_STATUS_FILLED, \
     ORDER_STATUS_CANCELED, ORDER_STATUS_FAILED
+from aioquant.order import TRADE_TYPE_BUY_OPEN, TRADE_TYPE_SELL_OPEN, TRADE_TYPE_SELL_CLOSE, TRADE_TYPE_BUY_CLOSE
 
 
-__all__ = ("BitmexRestAPI", "BitmexeTrade", )
+__all__ = ("BitmexAPI", "BitmexTrade", )
 
 
-class BitmexRestAPI:
-    """Binance REST API client.
-
-    Attributes:
-        access_key: Account's ACCESS KEY.
-        secret_key: Account's SECRET KEY.
-        host: HTTP request host, default `https://api.binance.com`.
+class BitmexAPI:
+    """ 向交易所发起交易请求
     """
 
-    def __init__(self, access_key, secret_key, host=None):
-        """Initialize REST API client."""
-        self._host = host or "https://www.bitmex.com"
-        self._access_key = access_key
-        self._secret_key = secret_key
-
-    async def ping(self):
-        """Test connectivity.
-
-        Returns:
-            success: Success results, otherwise it's None.
-            error: Error information, otherwise it's None.
+    def __init__(self, host, access_key, secret_key):
+        """ 初始化
+        @param host 请求的host
+        @param access_key 请求的access_key
+        @param secret_key 请求的secret_key
         """
-        uri = "/api/v3/ping"
-        success, error = await self.request("GET", uri)
+        self.host = host
+        self.access_key = access_key
+        self.secret_key = secret_key
+
+    async def get_wallet(self):
+        """ 获取钱包
+        """
+        success, error = await self.request("GET", "/api/v1/user/wallet")
         return success, error
 
-    async def get_server_time(self):
-        """Get server time.
-
-        Returns:
-            success: Success results, otherwise it's None.
-            error: Error information, otherwise it's None.
+    async def get_wallet_summary(self):
+        """ 获取钱包摘要
         """
-        uri = "/api/v3/time"
-        success, error = await self.request("GET", uri)
+        success, error = await self.request("GET", "/api/v1/user/walletSummary")
         return success, error
 
-    async def get_exchange_info(self):
-        """Get exchange information.
-
-        Returns:
-            success: Success results, otherwise it's None.
-            error: Error information, otherwise it's None.
+    async def get_margin(self):
+        """ 获取资产净值
         """
-        uri = "/api/v3/exchangeInfo"
-        success, error = await self.request("GET", uri)
+        success, error = await self.request("GET", "/api/v1/user/margin")
         return success, error
 
-    async def get_orderbook(self, symbol, limit=10):
-        """Get latest orderbook information.
-
-        Args:
-            symbol: Symbol name, e.g. `BTCUSDT`.
-            limit: Number of results per request. (default 10, max 5000.)
-
-        Returns:
-            success: Success results, otherwise it's None.
-            error: Error information, otherwise it's None.
+    async def create_order(self, action, symbol, price, quantity, order_type="Limit", text=""):
+        """ 创建委托单
+        @param action 委托类型 Buy 买入,  Sell 卖出
+        @param symbol 交易对(合约名称)
+        @param price 委托价格
+        @param quantity 委托数量
+        @param order_type 订单类型 Market 市价单, Limit 限价单
+        @param text 订单附带说明
         """
-        uri = "/api/v3/depth"
-        params = {
-            "symbol": symbol,
-            "limit": limit
-        }
-        success, error = await self.request("GET", uri, params=params)
-        return success, error
-
-    async def get_trade(self, symbol, limit=500):
-        """Get latest trade information.
-
-        Args:
-            symbol: Symbol name, e.g. `BTCUSDT`.
-            limit: Number of results per request. (Default 500, max 1000.)
-
-        Returns:
-            success: Success results, otherwise it's None.
-            error: Error information, otherwise it's None.
-        """
-        uri = "/api/v3/trades"
-        params = {
-            "symbol": symbol,
-            "limit": limit
-        }
-        success, error = await self.request("GET", uri, params=params)
-        return success, error
-
-    async def get_kline(self, symbol, interval="1m", start=None, end=None, limit=500):
-        """Get kline information.
-
-        Args:
-            symbol: Symbol name, e.g. `BTCUSDT`.
-            interval: Kline interval type, valid values: 1m, 3m, 5m, 15m, 30m, 1h, 2h, 4h, 6h, 8h, 12h, 1d, 3d, 1w, 1M
-            start: Start timestamp(millisecond).
-            end: End timestamp(millisecond).
-            limit: Number of results per request. (Default 500, max 1000.)
-
-        Returns:
-            success: Success results, otherwise it's None.
-            error: Error information, otherwise it's None.
-
-        Notes:
-            If start and end are not sent, the most recent klines are returned.
-        """
-        uri = "/api/v3/klines"
-        params = {
-            "symbol": symbol,
-            "interval": interval,
-            "limit": limit
-        }
-        if start and end:
-            params["startTime"] = start
-            params["endTime"] = end
-        success, error = await self.request("GET", uri, params=params)
-        return success, error
-
-    async def get_average_price(self, symbol):
-        """Current average price for a symbol.
-
-        Args:
-            symbol: Symbol name, e.g. `BTCUSDT`.
-
-        Returns:
-            success: Success results, otherwise it's None.
-            error: Error information, otherwise it's None.
-        """
-        uri = "/api/v3/avgPrice"
-        params = {
-            "symbol": symbol
-        }
-        success, error = await self.request("GET", uri, params=params)
-        return success, error
-
-    async def get_user_account(self):
-        """Get user account information.
-
-        Returns:
-            success: Success results, otherwise it's None.
-            error: Error information, otherwise it's None.
-        """
-        uri = "/api/v3/account"
-        ts = tools.get_cur_timestamp_ms()
-        params = {
-            "timestamp": str(ts)
-        }
-        success, error = await self.request("GET", uri, params, auth=True)
-        return success, error
-
-    async def create_order(self, action, symbol, price, quantity, client_order_id=None):
-        """Create an order.
-        Args:
-            action: Trade direction, `BUY` or `SELL`.
-            symbol: Symbol name, e.g. `BTCUSDT`.
-            price: Price of each contract.
-            quantity: The buying or selling quantity.
-            client_order_id: Client order id.
-
-        Returns:
-            success: Success results, otherwise it's None.
-            error: Error information, otherwise it's None.
-        """
-        uri = "/api/v3/order"
-        data = {
-            "symbol": symbol,
+        body = {
             "side": action,
-            "type": "LIMIT",
-            "timeInForce": "GTC",
-            "quantity": quantity,
+            "symbol": symbol,
             "price": price,
-            "recvWindow": "5000",
-            "newOrderRespType": "FULL",
-            "timestamp": tools.get_cur_timestamp_ms()
+            "orderQty": quantity,
+            "ordType": order_type,
+            "text": text,
+            # 新增post only
+            "execInst": "ParticipateDoNotInitiate"
         }
-        if client_order_id:
-            data["newClientOrderId"] = client_order_id
-        success, error = await self.request("POST", uri, body=data, auth=True)
+        success, error = await self.request("POST", "/api/v1/order", body=body)
         return success, error
 
-    async def revoke_order(self, symbol, order_id, client_order_id=None):
-        """Cancelling an unfilled order.
-        Args:
-            symbol: Symbol name, e.g. `BTCUSDT`.
-            order_id: Order id.
-            client_order_id: Client order id.
-
-        Returns:
-            success: Success results, otherwise it's None.
-            error: Error information, otherwise it's None.
+    async def revoke_order(self, order_id):
+        """ 撤销委托单
+        @param order_id 委托单id
         """
-        uri = "/api/v3/order"
-        params = {
-            "symbol": symbol,
-            "orderId": order_id,
-            "timestamp": tools.get_cur_timestamp_ms()
+        body = {
+            "orderID": order_id
         }
-        if client_order_id:
-            params["origClientOrderId"] = client_order_id
-        success, error = await self.request("DELETE", uri, params=params, auth=True)
+        success, error = await self.request("DELETE", "/api/v1/order", body=body)
         return success, error
 
-    async def get_order_status(self, symbol, order_id, client_order_id):
-        """Get order details by order id.
-
-        Args:
-            symbol: Symbol name, e.g. `BTCUSDT`.
-            order_id: Order id.
-            client_order_id: Client order id.
-
-        Returns:
-            success: Success results, otherwise it's None.
-            error: Error information, otherwise it's None.
+    async def revoke_orders(self, symbol=None):
+        """ 撤销所有委托单
+        @param symbol 交易对，默认None撤销所有交易对的所有委托单
         """
-        uri = "/api/v3/order"
-        params = {
-            "symbol": symbol,
-            "orderId": str(order_id),
-            "origClientOrderId": client_order_id,
-            "timestamp": tools.get_cur_timestamp_ms()
-        }
-        success, error = await self.request("GET", uri, params=params, auth=True)
-        return success, error
-
-    async def get_all_orders(self, symbol):
-        """Get all account orders; active, canceled, or filled.
-        Args:
-            symbol: Symbol name, e.g. `BTCUSDT`.
-
-        Returns:
-            success: Success results, otherwise it's None.
-            error: Error information, otherwise it's None.
-        """
-        uri = "/api/v3/allOrders"
-        params = {
-            "symbol": symbol,
-            "timestamp": tools.get_cur_timestamp_ms()
-        }
-        success, error = await self.request("GET", uri, params=params, auth=True)
-        return success, error
-
-    async def get_open_orders(self, symbol):
-        """Get all open order information.
-        Args:
-            symbol: Symbol name, e.g. `BTCUSDT`.
-
-        Returns:
-            success: Success results, otherwise it's None.
-            error: Error information, otherwise it's None.
-        """
-        uri = "/api/v3/openOrders"
-        params = {
-            "symbol": symbol,
-            "timestamp": tools.get_cur_timestamp_ms()
-        }
-        success, error = await self.request("GET", uri, params=params, auth=True)
-        return success, error
-
-    async def get_listen_key(self):
-        """Get listen key, start a new user data stream.
-
-        Returns:
-            success: Success results, otherwise it's None.
-            error: Error information, otherwise it's None.
-        """
-        uri = "/api/v3/userDataStream"
-        success, error = await self.request("POST", uri)
-        return success, error
-
-    async def put_listen_key(self, listen_key):
-        """Keepalive a user data stream to prevent a time out.
-
-        Args:
-            listen_key: Listen key.
-
-        Returns:
-            success: Success results, otherwise it's None.
-            error: Error information, otherwise it's None.
-        """
-        uri = "/api/v3/userDataStream"
-        params = {
-            "listenKey": listen_key
-        }
-        success, error = await self.request("PUT", uri, params=params)
-        return success, error
-
-    async def delete_listen_key(self, listen_key):
-        """Delete a listen key.
-
-        Args:
-            listen_key: Listen key.
-
-        Returns:
-            success: Success results, otherwise it's None.
-            error: Error information, otherwise it's None.
-        """
-        uri = "/api/v3/userDataStream"
-        params = {
-            "listenKey": listen_key
-        }
-        success, error = await self.request("DELETE", uri, params=params)
-        return success, error
-
-    async def request(self, method, uri, params=None, body=None, headers=None, auth=False):
-        """Do HTTP request.
-
-        Args:
-            method: HTTP request method. `GET` / `POST` / `DELETE` / `PUT`.
-            uri: HTTP request uri.
-            params: HTTP query params.
-            body:   HTTP request body.
-            headers: HTTP request headers.
-            auth: If this request requires authentication.
-
-        Returns:
-            success: Success results, otherwise it's None.
-            error: Error information, otherwise it's None.
-        """
-        url = urljoin(self._host, uri)
-        data = {}
-        if params:
-            data.update(params)
-        if body:
-            data.update(body)
-
-        if data:
-            query = "&".join(["=".join([str(k), str(v)]) for k, v in data.items()])
+        if symbol:
+            body = {
+                "symbol": symbol
+            }
         else:
-            query = ""
-        if auth and query:
-            signature = hmac.new(self._secret_key.encode(), query.encode(), hashlib.sha256).hexdigest()
-            query += "&signature={s}".format(s=signature)
-        if query:
-            url += ("?" + query)
-
-        if not headers:
-            headers = {}
-        headers["X-MBX-APIKEY"] = self._access_key
-        _, success, error = await AsyncHttpRequests.fetch(method, url, headers=headers, timeout=10, verify_ssl=False)
+            body = None
+        success, error = await self.request("DELETE", "/api/v1/order/all", body=body)
         return success, error
 
+    async def request(self, method, uri, params=None, body=None):
+        """ 发起请求
+        """
+        if params:
+            query = "&".join(["{}={}".format(k, params[k]) for k in sorted(params.keys())])
+            url = uri + "?" + query
+        else:
+            url = uri
+        ts = tools.get_cur_timestamp() + 5
+        signature = self.generate_signature(method, url, ts, body)
+        headers = {
+            "api-expires": str(ts),
+            "api-key": self.access_key,
+            "api-signature": signature
+        }
+        url = urljoin(self.host, uri)
+        _, success, error = await AsyncHttpRequests.fetch(method, url, headers=headers, data=body, timeout=10)
+        return success, error
 
-class BinanceTrade:
-    """Binance Trade module. You can initialize trade object with some attributes in kwargs.
+    def generate_signature(self, verb, url, nonce, data):
+        """ 生成签名
+        """
+        data = json.dumps(data) if data else ""
+        message = str(verb + url + str(nonce) + data)
+        signature = hmac.new(self.secret_key.encode("utf-8"), message.encode("utf-8"),
+                             digestmod=hashlib.sha256).hexdigest()
+        return signature
 
-    Attributes:
-        account: Account name for this trade exchange.
-        strategy: What's name would you want to created for your strategy.
-        symbol: Symbol name for your trade.
-        host: HTTP request host. (default "https://api.binance.com")
-        wss: Websocket address. (default "wss://stream.binance.com:9443")
-        access_key: Account's ACCESS KEY.
-        secret_key Account's SECRET KEY.
-        order_update_callback: You can use this param to specify a async callback function when you initializing Trade
-            module. `order_update_callback` is like `async def on_order_update_callback(order: Order): pass` and this
-            callback function will be executed asynchronous when some order state updated.
-        init_callback: You can use this param to specify a async callback function when you initializing Trade
-            module. `init_callback` is like `async def on_init_callback(success: bool, **kwargs): pass`
-            and this callback function will be executed asynchronous after Trade module object initialized done.
-        error_callback: You can use this param to specify a async callback function when you initializing Trade
-            module. `error_callback` is like `async def on_error_callback(error: Error, **kwargs): pass`
-            and this callback function will be executed asynchronous when some error occur while trade module is running.
+
+class BitmexTrade(Websocket):
+    """ Bitmex 交易模块
     """
 
     def __init__(self, **kwargs):
-        """Initialize Trade module."""
+        """ 初始化
+        """
         e = None
         if not kwargs.get("account"):
             e = Error("param account miss")
@@ -401,262 +157,293 @@ class BinanceTrade:
         if not kwargs.get("symbol"):
             e = Error("param symbol miss")
         if not kwargs.get("host"):
-            kwargs["host"] = "https://api.binance.com"
+            kwargs["host"] = "https://www.bitmex.com"
         if not kwargs.get("wss"):
-            kwargs["wss"] = "wss://stream.binance.com:9443"
+            kwargs["wss"] = "wss://www.bitmex.com"
         if not kwargs.get("access_key"):
             e = Error("param access_key miss")
         if not kwargs.get("secret_key"):
             e = Error("param secret_key miss")
         if e:
             logger.error(e, caller=self)
-            SingleTask.run(kwargs["error_callback"], e)
-            SingleTask.run(kwargs["init_callback"], False)
+            if kwargs.get("init_success_callback"):
+                SingleTask.run(kwargs["init_success_callback"], False, e)
             return
 
         self._account = kwargs["account"]
         self._strategy = kwargs["strategy"]
-        self._platform = kwargs["platform"]
+        self._platform = BITMEX
         self._symbol = kwargs["symbol"]
         self._host = kwargs["host"]
         self._wss = kwargs["wss"]
         self._access_key = kwargs["access_key"]
         self._secret_key = kwargs["secret_key"]
+        self._asset_update_callback = kwargs.get("asset_update_callback")
         self._order_update_callback = kwargs.get("order_update_callback")
-        self._init_callback = kwargs.get("init_callback")
+        self._position_update_callback = kwargs.get("position_update_callback")
+        self._init_success_callback = kwargs.get("init_callback")
         self._error_callback = kwargs.get("error_callback")
 
-        self._raw_symbol = self._symbol.replace("/", "")  # Row symbol name, same as Binance Exchange.
-        self._listen_key = None  # Listen key for Websocket authentication.
-        self._assets = {}  # Asset data. e.g. {"BTC": {"free": "1.1", "locked": "2.2", "total": "3.3"}, ... }
-        self._orders = {}  # Order data. e.g. {order_id: order, ... }
+        url = self._wss + "/realtime"
+        super(BitmexTrade, self).__init__(url, send_hb_interval=5)
+        self.heartbeat_msg = "ping"
 
-        # Initialize our REST API client.
-        self._rest_api = BinanceRestAPI(self._access_key, self._secret_key, self._host)
+        self._order_channel = "order:{symbol}".format(symbol=self._symbol)  # 订单订阅频道
+        self._position_channel = "position:{symbol}".format(symbol=self._symbol)  # 持仓订阅频道
 
-        # Create a loop run task to reset listen key every 30 minutes.
-        LoopRunTask.register(self._reset_listen_key, 60 * 30)
+        # 标记订阅订单、持仓是否成功
+        self._subscribe_order_ok = False
+        self._subscribe_position_ok = False
 
-        # Create a coroutine to initialize Websocket connection.
-        SingleTask.run(self._init_websocket)
+        self._assets = {}  # 资产 {"XBT": {"free": "1.1", "locked": "2.2", "total": "3.3"}, ... }
+        self._orders = {}
+        self._position = Position(self._platform, self._account, self._strategy, self._symbol)  # 仓位
 
-        LoopRunTask.register(self._send_heartbeat_msg, 10)
+        logger.info("Trade Bitmex 初始化 position:", self._position)
+        # 初始化REST API对象
+        self._rest_api = BitmexAPI(self._host, self._access_key, self._secret_key)
 
-    async def _send_heartbeat_msg(self, *args, **kwargs):
-        await self._ws.ping()
+        # 初始化资产订阅
+        if self._asset_update_callback:
+            AssetSubscribe(self._platform, self._account, self.on_event_asset_update)
+
+        self.initialize()
+
+    @property
+    def assets(self):
+        return copy.copy(self._assets)
 
     @property
     def orders(self):
         return copy.copy(self._orders)
 
     @property
+    def position(self):
+        return copy.copy(self._position)
+
+    @property
     def rest_api(self):
         return self._rest_api
 
-    async def _init_websocket(self):
-        """Initialize Websocket connection."""
-        # Get listen key first.
-        success, error = await self._rest_api.get_listen_key()
-        if error:
-            e = Error("get listen key failed: {}".format(error))
-            logger.error(e, caller=self)
-            SingleTask.run(self._error_callback, e)
-            SingleTask.run(self._init_callback, False)
-            return
-        self._listen_key = success["listenKey"]
-        uri = "/ws/" + self._listen_key
-        url = urljoin(self._wss, uri)
-        self._ws = Websocket(url, self.connected_callback, process_callback=self.process)
-
-    async def _reset_listen_key(self, *args, **kwargs):
-        """Reset listen key."""
-        if not self._listen_key:
-            logger.error("listen key not initialized!", caller=self)
-            return
-        await self._rest_api.put_listen_key(self._listen_key)
-        logger.info("reset listen key success!", caller=self)
-
     async def connected_callback(self):
-        """After websocket connection created successfully, pull back all open order information."""
-        logger.info("Websocket connection authorized successfully.", caller=self)
-        order_infos, error = await self._rest_api.get_open_orders(self._raw_symbol)
-        if error:
-            e = Error("get open orders error: {}".format(error))
-            SingleTask.run(self._error_callback, e)
-            SingleTask.run(self._init_callback, False)
-            return
-        for order_info in order_infos:
-            if order_info["status"] == "NEW":
-                status = ORDER_STATUS_SUBMITTED
-            elif order_info["status"] == "PARTIALLY_FILLED":
-                status = ORDER_STATUS_PARTIAL_FILLED
-            elif order_info["status"] == "FILLED":
-                status = ORDER_STATUS_FILLED
-            elif order_info["status"] == "CANCELED":
-                status = ORDER_STATUS_CANCELED
-            elif order_info["status"] == "REJECTED":
-                status = ORDER_STATUS_FAILED
-            elif order_info["status"] == "EXPIRED":
-                status = ORDER_STATUS_FAILED
-            else:
-                logger.warn("unknown status:", order_info, caller=self)
-                SingleTask.run(self._error_callback, "order status error.")
-                continue
+        """ 建立连接之后，鉴权、订阅频道
+        """
+        # 身份验证
+        expires = tools.get_cur_timestamp() + 5
+        signature = self._rest_api.generate_signature("GET", "/realtime", expires, None)
+        data = {
+            "op": "authKeyExpires",
+            "args": [self._access_key, expires, signature]
+        }
+        await self.ws.send_json(data)
 
-            order_id = str(order_info["orderId"])
+    @async_method_locker("BitmexTrade.process.locker")
+    async def process(self, msg):
+        """ 处理websocket上接收到的消息
+        """
+        if not isinstance(msg, dict):
+            return
+        logger.debug("msg:", json.dumps(msg), caller=self)
+
+        # 请求授权、订阅
+        if msg.get("request"):
+            if msg["request"]["op"] == "authKeyExpires":  # 授权
+                if msg["success"]:
+                    # 订阅order和position
+                    data = {
+                        "op": "subscribe",
+                        "args": [self._order_channel, self._position_channel]
+                    }
+                    await self.ws.send_json(data)
+                    logger.info("Websocket connection authorized successfully.", caller=self)
+                else:
+                    e = Error("Websocket connection authorized failed: {}".format(msg))
+                    logger.error(e, caller=self)
+                    if self._init_success_callback:
+                        SingleTask.run(self._error_callback, e)
+            if msg["request"]["op"] == "subscribe":  # 订阅
+                if msg["subscribe"] == self._order_channel and msg["success"]:
+                    self._subscribe_order_ok = True
+                    logger.info("subscribe order successfully.", caller=self)
+                if msg["subscribe"] == self._position_channel and msg["success"]:
+                    self._subscribe_position_ok = True
+                    logger.info("subscribe position successfully.", caller=self)
+                if self._subscribe_order_ok and self._subscribe_position_ok:
+                    if self._init_success_callback:
+                        SingleTask.run(self._init_success_callback, True)
+            return
+
+        # 订单更新
+        if msg.get("table") == "order":
+            for data in msg["data"]:
+                order = self._update_order(data)
+                if order and self._order_update_callback:
+                    SingleTask.run(self._order_update_callback, copy.copy(order))
+            return
+
+        # 持仓更新
+        if msg.get("table") == "position":
+            for data in msg["data"]:
+                self._update_position(data)
+                if self._position_update_callback:
+                    SingleTask.run(self._position_update_callback, copy.copy(self.position))
+
+    async def create_order(self, action, price, quantity, order_type=ORDER_TYPE_LIMIT, *args, **kwargs):
+        """ 创建订单
+        @param action 委托方向 BUY SELL
+        @param price 委托价格
+        @param quantity 委托数量
+        @param order_type 委托类型 LIMIT / MARKET
+        """
+        logger.info("price:", price)
+        if action == ORDER_ACTION_BUY:
+            action_tmp = "Buy"
+        else:
+            action_tmp = "Sell"
+        if int(quantity) > 0:
+            if action == ORDER_ACTION_BUY:
+                trade_type = TRADE_TYPE_BUY_OPEN
+            else:
+                trade_type = TRADE_TYPE_SELL_CLOSE
+        else:
+            if action == ORDER_ACTION_BUY:
+                trade_type = TRADE_TYPE_BUY_CLOSE
+            else:
+                trade_type = TRADE_TYPE_SELL_OPEN
+        if order_type == ORDER_TYPE_LIMIT:
+            order_type_tmp = "Limit"
+        elif order_type == ORDER_TYPE_MARKET:
+            order_type_tmp = "Market"
+        else:
+            return None, "order type error"
+        quantity = abs(int(quantity))
+        success, error = await self._rest_api.create_order(action_tmp, self._symbol, price, quantity, order_type_tmp,
+                                                           trade_type)
+        if error:
+            return None, error
+        else:
+            return success["orderID"], None
+
+    async def revoke_order(self, *order_nos):
+        """ 撤销订单
+        @param order_nos 订单号，可传入任意多个，如果不传入，那么就撤销所有订单
+        """
+        # 如果传入order_nos为空，即撤销全部委托单
+        if len(order_nos) == 0:
+            result, error = await self._rest_api.revoke_orders(self._symbol)
+            if error:
+                return False, error
+            return True, None
+
+        # 如果传入order_nos为一个委托单号，那么只撤销一个委托单
+        if len(order_nos) == 1:
+            success, error = await self._rest_api.revoke_order(order_nos[0])
+            if error:
+                return order_nos[0], error
+            else:
+                return order_nos[0], None
+
+        # 如果传入order_nos数量大于1，那么就批量撤销传入的委托单
+        if len(order_nos) > 1:
+            success, error = [], []
+            for order_no in order_nos:
+                _, e = await self._rest_api.revoke_order(order_no)
+                if e:
+                    error.append((order_no, e))
+                else:
+                    success.append(order_no)
+            return success, error
+
+    def _update_order(self, order_info):
+        """ 更新订单信息
+        @param order_info 订单信息
+              | "New" -> `Open, `New_order_accepted
+              | "PartiallyFilled" -> `Open, `Partially_filled
+              | "Filled" -> `Filled, `Filled
+              | "DoneForDay" -> `Open, `General_order_update
+              | "Canceled" -> `Canceled, `Canceled
+              | "PendingCancel" -> `Pending_cancel, `General_order_update
+              | "Stopped" -> `Open, `General_order_update
+              | "Rejected" -> `Rejected, `New_order_rejected
+              | "PendingNew" -> `Pending_open, `General_order_update
+              | "Expired" -> `Rejected, `New_order_rejected
+              | _ -> invalid_arg' execType ordStatus
+        """
+        order_no = order_info["orderID"]
+        state = order_info.get("ordStatus")
+        if state == "New":
+            status = ORDER_STATUS_SUBMITTED
+        elif state == "PartiallyFilled":
+            status = ORDER_STATUS_PARTIAL_FILLED
+        elif state == "Filled":
+            status = ORDER_STATUS_FILLED
+        elif state == "Canceled":
+            status = ORDER_STATUS_CANCELED
+        elif state in ["PendingNew", "DoneForDay", "PendingCancel"]:
+            return
+        else:
+            return
+
+        order = self._orders.get(order_no)
+        if not order:
+            action = ORDER_ACTION_BUY if order_info["side"] == "Buy" else ORDER_ACTION_SELL
+            text = order_info.get("text")
+            trade_type = int(text.split("\n")[-1])
             info = {
                 "platform": self._platform,
                 "account": self._account,
                 "strategy": self._strategy,
-                "order_id": order_id,
-                "client_order_id": order_info["clientOrderId"],
-                "action": ORDER_ACTION_BUY if order_info["side"] == "BUY" else ORDER_ACTION_SELL,
-                "order_type": ORDER_TYPE_LIMIT if order_info["type"] == "LIMIT" else ORDER_TYPE_MARKET,
                 "symbol": self._symbol,
-                "price": order_info["price"],
-                "quantity": order_info["origQty"],
-                "remain": float(order_info["origQty"]) - float(order_info["executedQty"]),
-                "status": status,
-                "avg_price": order_info["price"],
-                "ctime": order_info["time"],
-                "utime": order_info["updateTime"]
+                "order_no": order_no,
+                "action": action,
+                "price": order_info.get("price"),
+                "quantity": int(order_info["orderQty"]),
+                "remain": int(order_info["orderQty"]),
+                "trade_type": trade_type
             }
             order = Order(**info)
-            self._orders[order_id] = order
-            SingleTask.run(self._order_update_callback, copy.copy(order))
+            self._orders[order_no] = order
+        order.status = status
 
-        SingleTask.run(self._init_callback, True)
+        if order_info.get("cumQty"):
+            order.remain = order.quantity - int(order_info.get("cumQty"))
+        if order_info.get("avgPx"):
+            order.avg_price = order_info.get("avgPx")
+        if order.status in [ORDER_STATUS_FILLED, ORDER_STATUS_CANCELED, ORDER_STATUS_FAILED]:
+            self._orders.pop(order.order_no)
+        if order_info.get("timestamp"):
+            order.ctime = tools.utctime_str_to_mts(order_info.get("timestamp"))
+        if order_info.get("transactTime"):
+            order.utime = tools.utctime_str_to_mts(order_info.get("transactTime"))
+        return order
 
-    async def create_order(self, action, price, quantity, *args, **kwargs):
-        """Create an order.
-
-        Args:
-            action: Trade direction, `BUY` or `SELL`.
-            price: Price of each order.
-            quantity: The buying or selling quantity.
-
-        Returns:
-            order_id: Order id if created successfully, otherwise it's None.
-            error: Error information, otherwise it's None.
+    def _update_position(self, position_info):
+        """ 更新持仓信息
+        @param position_info 持仓信息
         """
-        client_order_id = kwargs["client_order_id"]
-        result, error = await self._rest_api.create_order(action, self._raw_symbol, price, quantity, client_order_id)
-        if error:
-            SingleTask.run(self._error_callback, error)
-            return None, error
-        order_id = str(result["orderId"])
-        return order_id, None
-
-    async def revoke_order(self, *order_ids):
-        """Revoke (an) order(s).
-
-        Args:
-            order_ids: Order id list, you can set this param to 0 or multiple items. If you set 0 param, you can cancel
-                all orders for this symbol(initialized in Trade object). If you set 1 param, you can cancel an order.
-                If you set multiple param, you can cancel multiple orders. Do not set param length more than 100.
-
-        Returns:
-            Success or error, see bellow.
-        """
-        # If len(order_ids) == 0, you will cancel all orders for this symbol(initialized in Trade object).
-        if len(order_ids) == 0:
-            order_infos, error = await self._rest_api.get_open_orders(self._raw_symbol)
-            if error:
-                SingleTask.run(self._error_callback, error)
-                return False, error
-            for order_info in order_infos:
-                _, error = await self._rest_api.revoke_order(self._raw_symbol, order_info["orderId"])
-                if error:
-                    SingleTask.run(self._error_callback, error)
-                    return False, error
-            return True, None
-
-        # If len(order_ids) == 1, you will cancel an order.
-        if len(order_ids) == 1:
-            success, error = await self._rest_api.revoke_order(self._raw_symbol, order_ids[0])
-            if error:
-                SingleTask.run(self._error_callback, error)
-                return order_ids[0], error
-            else:
-                return order_ids[0], None
-
-        # If len(order_ids) > 1, you will cancel multiple orders.
-        if len(order_ids) > 1:
-            success, error = [], []
-            for order_id in order_ids:
-                _, e = await self._rest_api.revoke_order(self._raw_symbol, order_id)
-                if e:
-                    SingleTask.run(self._error_callback, e)
-                    error.append((order_id, e))
-                else:
-                    success.append(order_id)
-            return success, error
-
-    async def get_open_order_ids(self):
-        """Get open order id list.
-        """
-        success, error = await self._rest_api.get_open_orders(self._raw_symbol)
-        if error:
-            SingleTask.run(self._error_callback, error)
-            return None, error
+        current_qty = position_info.get("currentQty")
+        if current_qty > 0:
+            self._position.long_quantity = abs(int(current_qty))
+            self._position.short_quantity = 0
+            if position_info.get("avgEntryPrice"):
+                self._position.long_avg_price = position_info.get("avgEntryPrice")
+        elif current_qty < 0:
+            self._position.long_quantity = 0
+            self._position.short_quantity = abs(int(current_qty))
+            if position_info.get("avgEntryPrice"):
+                self._position.short_avg_price = position_info.get("avgEntryPrice")
         else:
-            order_ids = []
-            for order_info in success:
-                order_id = str(order_info["orderId"])
-                order_ids.append(order_id)
-            return order_ids, None
+            self._position.short_quantity = 0
+            self._position.long_avg_price = 0
+            self._position.long_quantity = 0
+            self._position.short_avg_price = 0
+        if position_info.get("liquidationPrice"):
+            self._position.liquid_price = position_info.get("liquidationPrice")
+        if position_info.get("timestamp"):
+            self._position.utime = tools.utctime_str_to_ms(position_info.get("timestamp"))
 
-    @async_method_locker("BinanceTrade.process.locker")
-    async def process(self, msg):
-        """Process message that received from Websocket connection.
-
-        Args:
-            msg: message received from Websocket connection.
+    async def on_event_asset_update(self, asset: Asset):
+        """ 资产数据更新回调
         """
-        logger.debug("msg:", json.dumps(msg), caller=self)
-        e = msg.get("e")
-        if e == "executionReport":  # Order update.
-            if msg["s"] != self._raw_symbol:
-                return
-            order_id = str(msg["i"])
-            if msg["X"] == "NEW":
-                status = ORDER_STATUS_SUBMITTED
-            elif msg["X"] == "PARTIALLY_FILLED":
-                status = ORDER_STATUS_PARTIAL_FILLED
-            elif msg["X"] == "FILLED":
-                status = ORDER_STATUS_FILLED
-            elif msg["X"] == "CANCELED":
-                status = ORDER_STATUS_CANCELED
-            elif msg["X"] == "REJECTED":
-                status = ORDER_STATUS_FAILED
-            elif msg["X"] == "EXPIRED":
-                status = ORDER_STATUS_FAILED
-            else:
-                logger.warn("unknown status:", msg, caller=self)
-                SingleTask.run(self._error_callback, "order status error.")
-                return
-            order = self._orders.get(order_id)
-            if not order:
-                info = {
-                    "platform": self._platform,
-                    "account": self._account,
-                    "strategy": self._strategy,
-                    "order_id": order_id,
-                    "client_order_id": msg["c"],
-                    "action": ORDER_ACTION_BUY if msg["S"] == "BUY" else ORDER_ACTION_SELL,
-                    "order_type": ORDER_TYPE_LIMIT if msg["o"] == "LIMIT" else ORDER_TYPE_MARKET,
-                    "symbol": self._symbol,
-                    "price": msg["p"],
-                    "quantity": msg["q"],
-                    "ctime": msg["O"]
-                }
-                order = Order(**info)
-                self._orders[order_id] = order
-            order.remain = float(msg["q"]) - float(msg["z"])
-            order.status = status
-            order.avg_price = msg["L"]
-            order.utime = msg["T"]
-
-            SingleTask.run(self._order_update_callback, copy.copy(order))
-            if status in [ORDER_STATUS_FAILED, ORDER_STATUS_CANCELED, ORDER_STATUS_FILLED]:
-                self._orders.pop(order_id)
+        self._assets = asset
+        SingleTask.run(self._asset_update_callback, asset)

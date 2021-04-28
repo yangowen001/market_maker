@@ -76,6 +76,8 @@ class Trade:
             from aioquant.platform.huobi import HuobiTrade as T
         elif platform == const.OKEX:
             from aioquant.platform.okex import OKExTrade as T
+        elif platform == const.BITMEX:
+            from aioquant.platform.bitmex import BitmexTrade as T
         else:
             logger.error("platform error:", platform, caller=self)
             e = Error("platform error")
@@ -111,6 +113,8 @@ class Trade:
             order_id: Order id if created successfully, otherwise it's None.
             error: Error information, otherwise it's None.
         """
+        logger.info("price:", type(price), price)
+        logger.info("quantity", type(quantity), quantity)
         price = tools.float_to_str(price)
         quantity = tools.float_to_str(quantity)
         if not kwargs.get("client_order_id"):
