@@ -124,6 +124,31 @@ class Trade:
         order_id, error = await self._t.create_order(action, price, quantity, *args, **kwargs)
         return order_id, error
 
+    async def edit_order(self, client_order_id, price, quantity) -> (str, Error):
+        """Edit an order.
+
+        Args:
+            action: Trade direction, `BUY` or `SELL`.
+            price: Price of each order/contract.
+            quantity: The buying or selling quantity.
+            kwargs：
+                order_type: Specific type of order, `LIMIT` or `MARKET`. (default is `LIMIT`)
+                client_order_id: Client order id, default `None` will be replaced by a random uuid string.
+
+        Returns:
+            order_id: Order id if created successfully, otherwise it's None.
+            error: Error information, otherwise it's None.
+        """
+        logger.info("price:", type(price), price)
+        logger.info("quantity", type(quantity), quantity)
+        logger.info("client_order_id", client_order_id)
+        price = tools.float_to_str(price)
+        quantity = tools.float_to_str(quantity)
+
+        r, error = await self._t.edit_order(client_order_id, price, quantity)
+        return r, error
+
+
     async def revoke_order(self, *order_ids):
         """Revoke (an) order(s).
 
