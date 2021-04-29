@@ -79,7 +79,9 @@ class BitmexAPI:
         """
         logger.info("action", action, "symbol", symbol, "price", price)
         logger.info("client_order_id", kwargs['client_order_id'])
+        client_order_id = kwargs['client_order_id']
         body = {
+            'clOrdID': client_order_id,
             "side": action,
             "symbol": symbol,
             "price": price,
@@ -90,6 +92,19 @@ class BitmexAPI:
             "execInst": "ParticipateDoNotInitiate"
         }
         success, error = await self.request("POST", "/api/v1/order", body=body)
+        return success, error
+        
+    async def edit_order(self, client_order_id, price, quantity):
+        """ 编辑委托单
+        @param price 委托价格
+        @param quantity 委托数量
+        """
+        body = {
+            "origClOrdID": client_order_id,
+            "price": price,
+            "orderQty": quantity,
+        }
+        success, error = await self.request("PUT", "/api/v1/order", body=body)
         return success, error
 
     async def revoke_order(self, order_id):
@@ -277,6 +292,7 @@ class BitmexTrade(Websocket):
 
         # 订单更新
         if msg.get("table") == "order":
+            logger.info("BiTMEX order update:", msg["data"], self._order_update_callback)
             for data in msg["data"]:
                 order = self._update_order(data)
                 if order and self._order_update_callback:
@@ -325,6 +341,17 @@ class BitmexTrade(Websocket):
         else:
             return success["orderID"], None
 
+    async def edit_order(self, client_order_id, price, quantity):
+        """ 编辑订单
+        @param price 委托价格
+        @param quantity 委托数量
+        """
+        success, error = await self._rest_api.edit_order(client_order_id, price, quantity)
+        if error:
+            return False, error
+        else:
+            return True, None
+
     async def revoke_order(self, *order_nos):
         """ 撤销订单
         @param order_nos 订单号，可传入任意多个，如果不传入，那么就撤销所有订单
@@ -370,7 +397,7 @@ class BitmexTrade(Websocket):
               | "Expired" -> `Rejected, `New_order_rejected
               | _ -> invalid_arg' execType ordStatus
         """
-        logger.info("order info:", order_info)
+        logger.info("_update_order:", order_info)
         order_no = order_info["orderID"]
         state = order_info.get("ordStatus")
         if state == "New":
@@ -381,10 +408,8 @@ class BitmexTrade(Websocket):
             status = ORDER_STATUS_FILLED
         elif state == "Canceled":
             status = ORDER_STATUS_CANCELED
-        elif state in ["PendingNew", "DoneForDay", "PendingCancel"]:
-            return
         else:
-            return
+            status = None
 
         order = self._orders.get(order_no)
         if not order:
@@ -397,22 +422,19 @@ class BitmexTrade(Websocket):
                 "strategy": self._strategy,
                 "symbol": self._symbol,
                 "order_id": order_no,
+                "client_order_id": order_info.get("clOrdID"),
                 "action": action,
                 "price": order_info.get("price"),
-                #"avg_price": order_info["avgPx"],
                 "quantity": int(order_info["orderQty"]),
-                #"remain": int(order_info["leavesQty"]),
-                #"ctime": order_info["timestamp"],
-                #"utime": order_info["updateTime"],
-
-                "client_order_id": order_info['clOrdID'],
-                "order_type": order_info['ordType'],
-                #"fee": self.fee,
+                "remain": int(order_info["orderQty"]),
+                "trade_type": trade_type
             }
             order = Order(**info)
             self._orders[order_no] = order
-        order.status = status
-
+        if status:
+            order.status = status
+        if order_info.get("price"):
+            order.price = order_info.get("price")
         if order_info.get("cumQty"):
             order.remain = order.quantity - int(order_info.get("cumQty"))
         if order_info.get("avgPx"):
