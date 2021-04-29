@@ -29,6 +29,6 @@
     "host": "https://testnet.bitmex.com",
     "wss": "wss://testnet.bitmex.com",
     "symbol": "XBTUSD",
-    "quantity": 50,
-    "delta": 0.005
+    "quantity": 5,
+    "delta": 5
 }
