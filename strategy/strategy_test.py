@@ -66,7 +66,7 @@ class MyStrategy:
         #注册回调函数
         LoopRunTask.register(self.do_action, 1)
         LoopRunTask.register(self.check_orders, 1)
-        LoopRunTask.register(self.check_orderbook, 30)
+        LoopRunTask.register(self.check_orderbook, 5)
         LoopRunTask.register(self.show_infomation, 30)
 
     async def on_init_callback(self, success, **kwargs):
@@ -96,13 +96,13 @@ class MyStrategy:
     @async_method_locker("do_action", wait=False, timeout=5)
     async def do_action(self, *args, **kwargs):
         """开仓或者平仓"""
-        logger.info("ready to action")
+        #logger.info("ready to action")
         if not self._init_ok or not self._orderbook_ok:
             return
         if not self._position:
             logger.warn("position not ok", caller=self)
             return
-        logger.info("ready OK")
+        #logger.info("ready OK")
         await self.buy_open()
         await self.sell_close()
 
@@ -137,6 +137,7 @@ class MyStrategy:
 
     @async_method_locker("sell_close", wait=False, timeout=5)
     async def sell_close(self):
+        #logger.info("sell_close", self._buy_open_client_order_id, self._position.long_quantity)
         if self._sell_close_client_order_id:
             return
         if self._position.long_quantity != config.quantity:
@@ -167,23 +168,24 @@ class MyStrategy:
         logger.info("order update:", order, caller=self)
 
         self._orders[order.client_order_id] = order
-        if order.status == ORDER_STATUS_FAILED:
+        if order.status == ORDER_STATUS_FILLED:
             logger.info("order filled:", order, caller=self)
         #await self.send_order_filled_message(order)
 
     async def on_event_position_update(self, position: Position):
-        logger.info("position update:", position, caller=self)
+        #logger.info("position update:", position, caller=self)
 
         self._position = position
 
     @async_method_locker("check_orders.locker", timeout=5)
     async def check_orders(self, *args, **kwargs):
+        logger.info("check orders, self._orderbook_ok: ", self._orderbook_ok, self._orders)
         if not self._orderbook_ok:
             return
         orders = copy.copy(self._orders)
         for order in orders.values():
             if order.status in [
-                    ORDER_STATUS_FAILED, ORDER_STATUS_FAILED,
+                    ORDER_STATUS_FILLED, ORDER_STATUS_FAILED,
                     ORDER_STATUS_CANCELED
             ]:
                 if order.client_order_id == self._buy_open_client_order_id:
@@ -193,20 +195,24 @@ class MyStrategy:
                 del self._orders[order.client_order_id]
             # 如果价格偏高，编辑价格
             error = None
-            if order.action == "Buy":
+            if order.action == "BUY":
+                logger.info("bid_price", self.bid_price, "order_price", order.price)
                 if self.bid_price - order.price >= config.delta:
                     success, error = await self.trader.edit_order(
-                        order.order_id, self.bid_price, order.remain)
+                        order.client_order_id, self.bid_price, order.remain)
                     logger.info("edit order:",
+                                success,
                                 order.client_order_id,
                                 "price:",
                                 self.bid_price,
                                 caller=self)
             else:
                 if order.price - self.ask_price >= config.delta:
+                    logger.info("ask_price", self.ask_price, "order_price", order.price)
                     success, error = await self.trader.edit_order(
-                        order.order_id, self.ask_price, order, remain)
+                        order.client_order_id, self.ask_price, order.remain)
                     logger.info("edit order:",
+                                success,
                                 order.client_order_id,
                                 "price:",
                                 self.ask_price,
