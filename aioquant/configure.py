@@ -70,6 +70,7 @@ class Configure:
         self.heartbeat = update_fields.get("HEARTBEAT", {})
         self.proxy = update_fields.get("PROXY", None)
         self.platforms = update_fields.get("PLATFORMS", None)
+        self.strategys = update_fields.get("STRATEGYS", None)
 
         for k, v in update_fields.items():
             setattr(self, k, v)
