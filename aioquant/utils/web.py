@@ -194,7 +194,7 @@ class AsyncHttpRequests(object):
         if code not in (200, 201, 202, 203, 204, 205, 206):
             text = await response.text()
             logger.error("method:", method, "url:", url, "headers:", headers, "params:", params, "body:", body,
-                         "data:", data, "code:", code, "result:", text, caller=cls)
+                         "data:", data, "code:", code, "result:", text, "r-headers:", response.headers, caller=cls)
             return code, None, text
         try:
             result = await response.json()
