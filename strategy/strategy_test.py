@@ -66,7 +66,7 @@ class MyStrategy:
         #注册回调函数
         LoopRunTask.register(self.do_action, 1)
         LoopRunTask.register(self.check_orders, 1)
-        LoopRunTask.register(self.check_orderbook, 5)
+        LoopRunTask.register(self.check_orderbook, 30)
         LoopRunTask.register(self.show_infomation, 30)
 
     async def on_init_callback(self, success, **kwargs):
@@ -77,20 +77,20 @@ class MyStrategy:
         logger.error("error:", error, caller=self)
 
     async def on_event_orderbook_update(self, orderbook: Orderbook):
-        logger.info("orderbook update")
+        #logger.info("orderbook update")
         if orderbook.platform != self.platform or orderbook.symbol != self.symbol:
             logger.error("platform or symbol error")
             return
-        logger.info("timestamp:", tools.get_cur_timestamp_ms(), orderbook.timestamp)
+        #logger.info("timestamp:", tools.get_cur_timestamp_ms(), orderbook.timestamp)
         if tools.get_cur_timestamp_ms() - orderbook.timestamp < 5 * 1000:
             self._orderbook_ok = True
         else:
             self._orderbook_ok = False
-        logger.info("_orderbook_ok", self._orderbook_ok, caller=self)
+        #logger.info("_orderbook_ok", self._orderbook_ok, caller=self)
         self.ask_price = orderbook.asks[0][0]
         self.bid_price = orderbook.bids[0][0]
-        logger.info("bid_price", self.bid_price)
-        logger.info("ask_price", self.ask_price)
+        #logger.info("bid_price", self.bid_price)
+        #logger.info("ask_price", self.ask_price)
         self.timestamp = orderbook.timestamp
 
     @async_method_locker("do_action", wait=False, timeout=5)
@@ -108,7 +108,7 @@ class MyStrategy:
 
     @async_method_locker("buy_open", wait=False, timeout=5)
     async def buy_open(self):
-        logger.info("buy_open", self._buy_open_client_order_id, self._position.long_quantity)
+        #logger.info("buy_open", self._buy_open_client_order_id, self._position.long_quantity)
         if self._buy_open_client_order_id:
             return
         if self._position.long_quantity != 0:
@@ -116,7 +116,7 @@ class MyStrategy:
         price = self.bid_price
         quantity = config.quantity
         self._buy_open_client_order_id = self.generate_client_order_id()
-        logger.info("client_order_id", self._buy_open_client_order_id)
+        #logger.info("client_order_id", self._buy_open_client_order_id)
         order_id, error = await self.trader.create_order(
             ORDER_ACTION_BUY,
             price,
@@ -179,7 +179,7 @@ class MyStrategy:
 
     @async_method_locker("check_orders.locker", timeout=5)
     async def check_orders(self, *args, **kwargs):
-        logger.info("check orders, self._orderbook_ok: ", self._orderbook_ok, self._orders)
+        #logger.info("check orders, self._orderbook_ok: ", self._orderbook_ok, self._orders)
         if not self._orderbook_ok:
             return
         orders = copy.copy(self._orders)
@@ -196,8 +196,8 @@ class MyStrategy:
             # 如果价格偏高，编辑价格
             error = None
             if order.action == "BUY":
-                logger.info("bid_price", self.bid_price, "order_price", order.price)
-                if self.bid_price - order.price >= config.delta:
+                #logger.info("bid_price", self.bid_price, "order_price", order.price)
+                if self.bid_price - order.price > config.delta:
                     success, error = await self.trader.edit_order(
                         order.client_order_id, self.bid_price, order.remain)
                     logger.info("edit order:",
@@ -207,8 +207,8 @@ class MyStrategy:
                                 self.bid_price,
                                 caller=self)
             else:
-                if order.price - self.ask_price >= config.delta:
-                    logger.info("ask_price", self.ask_price, "order_price", order.price)
+                if order.price - self.ask_price > config.delta:
+                    #logger.info("ask_price", self.ask_price, "order_price", order.price)
                     success, error = await self.trader.edit_order(
                         order.client_order_id, self.ask_price, order.remain)
                     logger.info("edit order:",
