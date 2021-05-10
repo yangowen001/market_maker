@@ -84,7 +84,7 @@ class Trade:
             SingleTask.run(self._on_error_callback, e)
             SingleTask.run(self._on_init_callback, False)
             return
-        logger.info("platform:", platform)
+        #logger.info("platform:", platform)
         self._t = T(**kwargs)
 
     @property
@@ -113,16 +113,37 @@ class Trade:
         Returns:
             order_id: Order id if created successfully, otherwise it's None.
             error: Error information, otherwise it's None.
-        """
-        logger.info("price:", type(price), price)
-        logger.info("quantity", type(quantity), quantity)
-        logger.info("client_order_id", args, kwargs)
+        # """
+        # logger.info("price:", type(price), price)
+        # logger.info("quantity", type(quantity), quantity)
+        # logger.info("client_order_id", args, kwargs)
         price = tools.float_to_str(price)
         quantity = tools.float_to_str(quantity)
         if not kwargs.get("client_order_id"):
             kwargs["client_order_id"] = tools.get_uuid1().replace("-", "")
         order_id, error = await self._t.create_order(action, price, quantity, *args, **kwargs)
         return order_id, error
+
+    async def create_bulk_orders(self, orders) -> (str, Error):
+        """Create an order.
+
+        Args:
+            action: Trade direction, `BUY` or `SELL`.
+            price: Price of each order/contract.
+            quantity: The buying or selling quantity.
+            kwargs：
+                order_type: Specific type of order, `LIMIT` or `MARKET`. (default is `LIMIT`)
+                client_order_id: Client order id, default `None` will be replaced by a random uuid string.
+
+        Returns:
+            order_id: Order id if created successfully, otherwise it's None.
+            error: Error information, otherwise it's None.
+        # """
+        # logger.info("price:", type(price), price)
+        # logger.info("quantity", type(quantity), quantity)
+        # logger.info("client_order_id", args, kwargs)
+        order_ids, error = await self._t.create_bulk_orders(orders)
+        return order_ids, error
 
     async def edit_order(self, client_order_id, price, quantity) -> (str, Error):
         """Edit an order.
@@ -139,9 +160,9 @@ class Trade:
             order_id: Order id if created successfully, otherwise it's None.
             error: Error information, otherwise it's None.
         """
-        logger.info("price:", type(price), price)
-        logger.info("quantity", type(quantity), quantity)
-        logger.info("client_order_id", client_order_id)
+        # logger.info("price:", type(price), price)
+        # logger.info("quantity", type(quantity), quantity)
+        # logger.info("client_order_id", client_order_id)
         price = tools.float_to_str(price)
         quantity = tools.float_to_str(quantity)
 
@@ -176,6 +197,21 @@ class Trade:
         """
         order_ids, error = await self._t.get_open_order_ids()
         return order_ids, error
+
+    async def get_open_orders(self) -> (list, Error):
+        """Get open orders.
+
+        Args:
+            None.
+
+        Returns:
+            order_ids: Open order id list, otherwise it's None.
+            error: Error information, otherwise it's None.
+        """
+        #logger.debug("trade, open order")
+        orders, error = await self._t.get_open_orders()
+        return orders, error
+
 
     async def _on_order_update_callback(self, order: Order) -> None:
         """Order information update callback.
