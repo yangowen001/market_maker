@@ -77,8 +77,8 @@ class BitmexAPI:
         @param order_type 订单类型 Market 市价单, Limit 限价单
         @param text 订单附带说明
         """
-        logger.info("action", action, "symbol", symbol, "price", price)
-        logger.info("client_order_id", kwargs['client_order_id'])
+        #logger.info("action", action, "symbol", symbol, "price", price)
+        #logger.info("client_order_id", kwargs['client_order_id'])
         client_order_id = kwargs['client_order_id']
         body = {
             'clOrdID': client_order_id,
@@ -93,7 +93,24 @@ class BitmexAPI:
         }
         success, error = await self.request("POST", "/api/v1/order", body=body)
         return success, error
-        
+
+    async def create_bulk_orders(self, orders):
+        """ 创建委托单
+        @param action 委托类型 Buy 买入,  Sell 卖出
+        @param symbol 交易对(合约名称)
+        @param price 委托价格
+        @param quantity 委托数量
+        @param order_type 订单类型 Market 市价单, Limit 限价单
+        @param text 订单附带说明
+        """
+        #logger.info("action", action, "symbol", symbol, "price", price)
+        #logger.info("client_order_id", kwargs['client_order_id'])
+        body = {
+            'orders': json.dumps(orders)
+        }
+        success, error = await self.request("POST", "/api/v1/order/bulk", body=body)
+        return success, error
+
     async def edit_order(self, client_order_id, price, quantity):
         """ 编辑委托单
         @param price 委托价格
@@ -130,6 +147,17 @@ class BitmexAPI:
         success, error = await self.request("DELETE", "/api/v1/order/all", body=body)
         return success, error
 
+    async def get_open_orders(self):
+        """Get open orders.
+        """
+        filter = {'ordStatus': 'New'}
+        params = {
+            "filter": json.dumps(filter)
+        }
+        success, error = await self.request("GET", "/api/v1/order", params=params)
+        logger.info("bitmex get open order:", success, error)
+        return success, error
+
     async def request(self, method, uri, params=None, body=None):
         """ 发起请求
         """
@@ -145,8 +173,8 @@ class BitmexAPI:
             "api-key": self.access_key,
             "api-signature": signature
         }
-        url = urljoin(self.host, uri)
-        _, success, error = await AsyncHttpRequests.fetch(method, url, headers=headers, data=body, timeout=10)
+        url = urljoin(self.host, url)
+        _, success, error = await AsyncHttpRequests.fetch(method, url, params=params, headers=headers, data=body, timeout=10)
         return success, error
 
     def generate_signature(self, verb, url, nonce, data):
@@ -260,7 +288,7 @@ class BitmexTrade(Websocket):
         """
         if not isinstance(msg, dict):
             return
-        logger.debug("msg:", json.dumps(msg), caller=self)
+        #logger.debug("msg:", json.dumps(msg), caller=self)
 
         # 请求授权、订阅
         if msg.get("request"):
@@ -341,6 +369,19 @@ class BitmexTrade(Websocket):
         else:
             return success["orderID"], None
 
+    async def create_bulk_orders(self, orders):
+        """ 创建订单
+        @param action 委托方向 BUY SELL
+        @param price 委托价格
+        @param quantity 委托数量
+        @param order_type 委托类型 LIMIT / MARKET
+        """
+        success, error = await self._rest_api.create_bulk_orders(orders)
+        if error:
+            return None, error
+        else:
+            return success, None
+
     async def edit_order(self, client_order_id, price, quantity):
         """ 编辑订单
         @param price 委托价格
@@ -382,6 +423,19 @@ class BitmexTrade(Websocket):
                     success.append(order_no)
             return success, error
 
+    async def get_open_orders(self):
+        """Get open order id list.
+        """
+        success, error = await self._rest_api.get_open_orders()
+        if error:
+            SingleTask.run(self._error_callback, error)
+            return None, error
+        else:
+            orders = []
+            for order in success:
+                orders.append(order)
+            return orders, None
+
     def _update_order(self, order_info):
         """ 更新订单信息
         @param order_info 订单信息
@@ -397,7 +451,7 @@ class BitmexTrade(Websocket):
               | "Expired" -> `Rejected, `New_order_rejected
               | _ -> invalid_arg' execType ordStatus
         """
-        logger.info("_update_order:", order_info)
+        #logger.info("_update_order:", order_info)
         order_no = order_info["orderID"]
         state = order_info.get("ordStatus")
         if state == "New":
@@ -415,7 +469,7 @@ class BitmexTrade(Websocket):
         if not order:
             action = ORDER_ACTION_BUY if order_info["side"] == "Buy" else ORDER_ACTION_SELL
             text = order_info.get("text")
-            trade_type = int(text.split("\n")[-1])
+            #trade_type = int(text.split("\n")[-1])
             info = {
                 "platform": self._platform,
                 "account": self._account,
@@ -427,7 +481,7 @@ class BitmexTrade(Websocket):
                 "price": order_info.get("price"),
                 "quantity": int(order_info["orderQty"]),
                 "remain": int(order_info["orderQty"]),
-                "trade_type": trade_type
+                "trade_type": 1
             }
             order = Order(**info)
             self._orders[order_no] = order
