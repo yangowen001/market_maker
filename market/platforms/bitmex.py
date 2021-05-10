@@ -66,7 +66,7 @@ class Bitmex(Websocket):
     async def process(self, msg):
         """ 处理websocket上接收到的消息
         """
-        logger.debug("msg:", msg, caller=self)
+        #logger.debug("msg:", msg, caller=self)
         if not isinstance(msg, dict):
             return
 
@@ -83,7 +83,7 @@ class Bitmex(Websocket):
                 }
                 #logger.info("orderbook", orderbook)
                 EventOrderbook(Orderbook(**orderbook)).publish()
-                logger.info("symbol:", symbol, "orderbook:", orderbook, caller=self)
+                #logger.info("symbol:", symbol, "orderbook:", orderbook, caller=self)
         elif table == "trade":  # 成交数据
             for item in msg["data"]:
                 symbol = item["symbol"]
@@ -96,7 +96,7 @@ class Bitmex(Websocket):
                     "timestamp": tools.utctime_str_to_ms(item["timestamp"])
                 }
                 EventTrade(Trade(**trade)).publish()
-                logger.info("symbol:", symbol, "trade:", trade, caller=self)
+                #logger.info("symbol:", symbol, "trade:", trade, caller=self)
         elif table == "tradeBin1m":  # 1分钟K线数据
             for item in msg["data"]:
                 symbol = item["symbol"]
@@ -112,7 +112,7 @@ class Bitmex(Websocket):
                     "kline_type": MARKET_TYPE_KLINE
                 }
                 EventKline(**kline).publish()
-                logger.info("symbol:", symbol, "kline:", kline, caller=self)
+                #logger.info("symbol:", symbol, "kline:", kline, caller=self)
 
     def _symbol_to_channel(self, symbol, channel_type):
         """ symbol转换到channel
