@@ -8,27 +8,40 @@
     "ACCOUNTS": [
         {
             "platform": "bitmex",
+            "account": "452084371@qq.com",
+            "access_key": "IKnxsK7TuWEeWM7eFfbOCNvi",
+            "secret_key": "rl1qCq02wnyiolNkpZ2uT5eTeO4NQQBcA59pgSpahJn7MitI"
+        },
+        {
+            "platform": "bitmex",
             "account": "skforregister@gmail.com",
-            "access_key": "mOTkQQjQeKOuENS0lhbJGarD",
-            "secret_key": "Djs6xptrHS4hRLZn5sBKdsNhKJv7v0cTt7D49XNRYkKCj81C"
+            "access_key": "zZiYBeDzTfFU-un79sX5EzEB",
+            "secret_key": "0ofJpmrTohKPDCUJxVOvx_kGaQWFYrYQkwjglGcsDSGovDzM"
         }
     ],
     "PLATFORMS": {
         "bitmex": {
-            "wss": "wss://testnet.bitmex.com",
+            "wss": "wss://www.bitmex.com",
             "symbols": [
                 "XBTUSD"
             ],
             "channels": [
-                "orderbook", "order", "position"
+                "orderbook"
             ]
         }
     },
-    "strategy": "my_test_strategy",
-    "platform": "bitmex",
-    "host": "https://testnet.bitmex.com",
-    "wss": "wss://testnet.bitmex.com",
-    "symbol": "XBTUSD",
-    "quantity": 5,
-    "delta": 5
+    "STRATEGYS": {
+        "grid": {
+            "strategy": "grid_strategy",
+            "platform": "bitmex",
+            "host": "https://www.bitmex.com",
+            "wss": "wss://www.bitmex.com",
+            "symbol": "XBTU21",
+            "grid_dist": 100,
+            "unit_amount": 300,
+            "buy_cnt": 200,
+            "sell_cnt": 100
+        }
+    }
+    
 }
